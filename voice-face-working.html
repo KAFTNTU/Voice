@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Голос → Обличчя</title>
+
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  height: 100vh;
+  background: #080806;
+  overflow: hidden;
+  font-family: monospace;
+}
+
+#face-area {
+  position: fixed;
+  inset: 0;
+}
+
+canvas {
+  width: 100vw;
+  height: 100vh;
+  display: block;
+}
+
+#placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #333;
+  letter-spacing: 2px;
+}
+
+#btn-area {
+  position: fixed;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+#rec-status { color: #555; font-size: 12px; }
+#error-msg { color: red; font-size: 12px; }
+
+button {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: 1px solid #333;
+  background: none;
+  cursor: pointer;
+}
+
+#btn-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: red;
+}
+</style>
+</head>
+
+<body>
+
+<div id="face-area">
+  <canvas id="canvas"></canvas>
+  <div id="placeholder">НАТИСНИ ДЛЯ ЗАПИСУ</div>
+</div>
+
+<div id="btn-area">
+  <div id="error-msg"></div>
+  <div id="rec-status"></div>
+  <button id="main-btn"><div id="btn-dot"></div></button>
+</div>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener("resize", resize);
+resize();
+
+let mediaRecorder;
+let isRecording = false;
+let animationId;
+
+const btn = document.getElementById("main-btn");
+const status = document.getElementById("rec-status");
+const errorMsg = document.getElementById("error-msg");
+const placeholder = document.getElementById("placeholder");
+
+function drawFace(volume) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+  const size = Math.min(canvas.width, canvas.height) * 0.25;
+
+  // face
+  ctx.fillStyle = "#d2a679";
+  ctx.beginPath();
+  ctx.arc(cx, cy, size, 0, Math.PI * 2);
+  ctx.fill();
+
+  // eyes
+  ctx.fillStyle = "#000";
+  ctx.beginPath();
+  ctx.arc(cx - size * 0.4, cy - size * 0.2, size * 0.1, 0, Math.PI * 2);
+  ctx.arc(cx + size * 0.4, cy - size * 0.2, size * 0.1, 0, Math.PI * 2);
+  ctx.fill();
+
+  // mouth reacts to volume
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.arc(cx, cy + size * 0.2, size * 0.4, 0, Math.PI * (1 + volume));
+  ctx.stroke();
+}
+
+btn.onclick = async () => {
+  errorMsg.textContent = "";
+
+  if (!isRecording) {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      const audioCtx = new AudioContext();
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      source.connect(analyser);
+
+      const data = new Uint8Array(analyser.frequencyBinCount);
+
+      function animate() {
+        analyser.getByteFrequencyData(data);
+        let sum = data.reduce((a, b) => a + b, 0);
+        let volume = sum / data.length / 255;
+
+        drawFace(volume);
+        if (isRecording) animationId = requestAnimationFrame(animate);
+      }
+
+      animate();
+
+      mediaRecorder = new MediaRecorder(stream);
+      mediaRecorder.start();
+
+      isRecording = true;
+      status.textContent = "Запис...";
+      placeholder.style.display = "none";
+
+    } catch (e) {
+      console.error(e);
+      errorMsg.textContent = "Помилка: " + e.message;
+    }
+
+  } else {
+    mediaRecorder.stop();
+    isRecording = false;
+    cancelAnimationFrame(animationId);
+    status.textContent = "Готово";
+  }
+};
+</script>
+
+</body>
+</html>
